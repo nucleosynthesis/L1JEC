@@ -24,11 +24,13 @@ double minpt     = 1.0;
 double mingenpt  = 5.0;
 double maxeta = 3.0;
 double maxdr  = 0.5; 
-int maxn = 2;  // 0,1,2
+int maxn = 2;  // 1 is 1 jet ,2 is 2 jets etc
 
 int SUBDONUT=2;  // 1 = regular, 2 = chunky, 3 = global rho
 
 int CALIBMODE=0;
+
+int gDoMatching=1;
 
 /* Calib modes ...
 	0 = no calibration
@@ -41,6 +43,12 @@ int CALIBMODE=0;
 
 std::string ptreweightfile = "/afs/cern.ch/user/n/nckw/private/l1jet-pu40/qcdPtReweight.root";
 std::string pthist	   = "qcdpt";
+
+std::string calibrationFolders[3] = {
+      "/afs/cern.ch/user/n/nckw/private/l1jet-pu40/thin_donut/",
+      "/afs/cern.ch/user/n/nckw/private/l1jet-pu40/chunky_donut/",
+      "/afs/cern.ch/user/n/nckw/private/l1jet-pu40/global_rho/",
+     };
 
 struct jet {
    double pt;
@@ -146,7 +154,7 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 	double etaBins[nEtaBins+1] = { 0.0, 0.348, 0.695, 1.044, 1.392, 1.74, 2.172, 3.0};
 	std::vector<TF1*> tf1Calibs;
 	if (CALIBMODE==1){
-		TFile *fCalib = TFile::Open("/afs/cern.ch/user/n/nckw/private/l1jet-pu40/calibration.root");
+		TFile *fCalib = TFile::Open(Form("%s/calibration.root",calibrationFolders[SUBDONUT-1].c_str()));
 		for (int ei=0;ei<nEtaBins;ei++){
 			std::cout << Form("fitfcneta_%g_%g",etaBins[ei],etaBins[ei+1]) << std::endl;
 			TF1 *fc = (TF1*) fCalib->Get(Form("fitfcneta_%g_%g",etaBins[ei],etaBins[ei+1]));
@@ -157,10 +165,10 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 
 	float tmPT, tmETA, tmHOE, tmSOPT;  // tmvaVariables to hold on to!
 	std::string rgeweights;
-	if (CALIBMODE==2) rgeweights =  Form("/afs/cern.ch/user/n/nckw/private/l1jet-pu40/weights/TMVARegresion_%s.weights.xml",calibtype.c_str());
-	if (CALIBMODE==3) rgeweights =  Form("/afs/cern.ch/user/n/nckw/private/l1jet-pu40/weights/TMVARegresion_%s_3var_hoe.weights.xml",calibtype.c_str());
-	if (CALIBMODE==4) rgeweights =  Form("/afs/cern.ch/user/n/nckw/private/l1jet-pu40/weights/TMVARegresion_%s_3var_sopt.weights.xml",calibtype.c_str());
-	if (CALIBMODE==5) rgeweights =  Form("/afs/cern.ch/user/n/nckw/private/l1jet-pu40/weights/TMVARegresion_%s_4var.weights.xml",calibtype.c_str());
+	if (CALIBMODE==2) rgeweights =  Form("%s/weights/TMVARegresion_%s.weights.xml",calibrationFolders[SUBDONUT-1].c_str(),calibtype.c_str());
+	if (CALIBMODE==3) rgeweights =  Form("%s/weights/TMVARegresion_%s_3var_hoe.weights.xml",calibrationFolders[SUBDONUT-1].c_str(),calibtype.c_str());
+	if (CALIBMODE==4) rgeweights =  Form("%s/weights/TMVARegresion_%s_3var_sopt.weights.xml",calibrationFolders[SUBDONUT-1].c_str(),calibtype.c_str());
+	if (CALIBMODE==5) rgeweights =  Form("%s/weights/TMVARegresion_%s_4var.weights.xml",calibrationFolders[SUBDONUT-1].c_str(),calibtype.c_str());
 	TMVA::Reader *tmvaReader_ = new TMVA::Reader();
  	tmvaReader_->AddVariable("pt" ,&tmPT );
  	tmvaReader_->AddVariable("eta",&tmETA);
@@ -294,9 +302,11 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 	l1_tree->SetBranchAddress("jetRingSumsHCAL_4_L1_for_Nick",&h4_l1);
 
 	//rf_tree->SetBranchAddress("njets",&n_rf);
-	l1_tree->SetBranchAddress("jetPt_ak4_gen",&pt_rf);
-	l1_tree->SetBranchAddress("jetEta_ak4_gen",&eta_rf);
-	l1_tree->SetBranchAddress("jetPhi_ak4_gen",&phi_rf);
+	if (gDoMatching){
+	  l1_tree->SetBranchAddress("jetPt_ak4_gen",&pt_rf);
+	  l1_tree->SetBranchAddress("jetEta_ak4_gen",&eta_rf);
+	  l1_tree->SetBranchAddress("jetPhi_ak4_gen",&phi_rf);
+	}
 
 	l1_tree->SetBranchAddress("medianRho",&rho);
 
@@ -310,8 +320,6 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 	l1_tree->SetBranchAddress("jetOuterStripsArea_2_5400_chunky",&jet_area_strip2_chunky);
 	l1_tree->SetBranchAddress("jetOuterStripsEnergy_1_5400_chunky",&jet_energy_strip1_chunky);
 	l1_tree->SetBranchAddress("jetOuterStripsEnergy_2_5400_chunky",&jet_energy_strip2_chunky);
-
-
 
 	l1_tree->SetBranchAddress("jetSecEta_L1_for_Nick",&rms_eta);
 	l1_tree->SetBranchAddress("jetSecPhi_L1_for_Nick",&rms_phi);
@@ -458,9 +466,10 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 		l1.jid = i;
 		l1_jets.push_back(l1);
 	  }
-	  // Ref collection 
-	  n_rf = pt_rf->size(); 
-	  for (unsigned int i=0;i<n_rf;i++){
+	  // Ref collection
+	  if (gDoMatching){
+	   n_rf = pt_rf->size(); 
+	   for (unsigned int i=0;i<n_rf;i++){
 	  	if ( i > MAXJETS) break;
 	  	if ( i > pt_rf->size()) break;
 		if ( fabs((*eta_rf)[i]) > maxeta ) continue;
@@ -471,6 +480,7 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 		rf.phi = (*phi_rf)[i];  
 		rf.jid=i;
 		rf_jets.push_back(rf);
+	   }
 	  }
 
 	  std::vector<jpair> jet_pairs;
@@ -484,7 +494,8 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 	    double deta = 0., dphi = 0.;
 	    int rfid  = 0, i_rf = 0, nnear = 0;
 
-	    if (matchpt){
+	    if (gDoMatching){
+	     if (matchpt){
 	      for (std::vector<jet>::iterator rf_it = rf_jets.begin(); rf_it!=rf_jets.end(); rf_it++){
 	    	  double ndr = deltaR(l1_it->phi,rf_it->phi,l1_it->eta,rf_it->eta);
 		  if (ndr > maxdr) continue;
@@ -501,7 +512,7 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 		  }
 		  i_rf++;
 	      }
-	    } else {
+	     } else {
 
 	      for (std::vector<jet>::iterator rf_it = rf_jets.begin(); rf_it!=rf_jets.end(); rf_it++){
 	    	  double ndr = deltaR(l1_it->phi,rf_it->phi,l1_it->eta,rf_it->eta);
@@ -527,6 +538,19 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 
 	     jet_pairs.push_back(cpair);
 	     matched_refs.push_back(rfid);
+	   } else {
+
+	     jpair cpair;
+	     cpair.l1_jet = *l1_it;
+	     cpair.rf_jet = *l1_it;  // just pair the jet with itself!
+	     cpair.dr     = 0;
+	     cpair.deta     = 0;
+	     cpair.dphi     = 0;
+	     cpair.nnear    = 0;
+
+	     jet_pairs.push_back(cpair);
+
+	   }
 	  }
 
 	  // print jets in the event (up to 10 say?)
@@ -566,7 +590,7 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 	  // loop through pairs, then fill the output tree, target is ref_pt/l1_pt
 	  int jpair_i=0;
 	  for (std::vector<jpair>::iterator pit = jet_pairs.begin(); pit!=jet_pairs.end(); pit++){
-	    if (jpair_i > maxn) break;
+	    if (jpair_i >= maxn) break;
 
 	    int noverlap = 0;
 	    double closel1dr = 999.0;
@@ -643,24 +667,26 @@ void makeTrees(std::string l1_collection ,std::string outDir, TFile *fout, TFile
 }
 
 #ifdef __CINT__
-void validateCalibs(std::string filenam, std::string outname){
+void validateCalibs(int doMatching, std::string filenam, std::string outname){
 #else
 int main(int argc, char *argv[] ){ //genlphi_1-genlphi_2") { 
-  if( argc < 2) {
+  if( argc < 3) {
 	std::cout << " Run with  index (file) to run over" << std::endl;
 	assert(0);
   }
   std::string filenam;
-  for(int p = 1; p < argc; p++){
+  int doMatching = atoi(argv[1]);
+  for(int p = 2; p < argc; p++){
    filenam += argv[p];
   }
   std::string outname = "Output.root";
 #endif
+	gDoMatching = doMatching;
+
 	TFile *fin  = TFile::Open(filenam.c_str());
 	TFile *fout = new TFile(outname.c_str(),"RECREATE");
 	CALIBMODE=0;
 	makeTrees("demo/L1Tree","Uncalib",fout,fin);
-	/*
 	CALIBMODE=1;
 	makeTrees("demo/L1Tree","Calib_param",fout,fin);	
 	CALIBMODE=2;
@@ -671,7 +697,6 @@ int main(int argc, char *argv[] ){ //genlphi_1-genlphi_2") {
 	makeTrees("demo/L1Tree","Calib_3var_sopt",fout,fin);
 	CALIBMODE=5;
 	makeTrees("demo/L1Tree","Calib_4var",fout,fin);
-	*/
 	fout->Close();
 	fin->Close();	
 //	makeTrees("LPUS",fout,fin);
